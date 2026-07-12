@@ -26,3 +26,4 @@ dist/
 # Data
 *.sqlite3
 scraper_cache/
+*.tsbuildinfo
