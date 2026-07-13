@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import FilterPanel from "../components/FilterPanel";
 import EventList from "../components/EventList";
 import MapView from "../components/MapView";
+import StatsBar from "../components/StatsBar";
 import { useEvents } from "../hooks/useEvents";
 import { useMuseums } from "../hooks/useMuseums";
 import { EMPTY_FILTERS, type EventFilters } from "../types";
@@ -54,6 +55,8 @@ export default function Home() {
           Expositions, ateliers, nocturnes, visites guidées… agrégés chaque jour.
         </p>
       </div>
+
+      <StatsBar />
 
       <div className="mb-6 flex flex-col sm:flex-row gap-3">
         <input

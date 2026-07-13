@@ -98,8 +98,18 @@ class MuseumScraperCollector(BaseCollector):
         html = await self.fetch_html(self.target.url)
         if not html:
             return []
-        cleaned = clean_html(html)
-        raw_events = await self.extract_events_with_claude(cleaned)
+        # 1. Données structurées JSON-LD si le site en publie (ex. Versailles) :
+        #    extraction déterministe, aucun appel IA facturé.
+        raw_events = extract_events_from_jsonld(html)
+        if raw_events:
+            logger.info(
+                "[%s] %d événements extraits via JSON-LD (sans appel IA)",
+                self.source,
+                len(raw_events),
+            )
+        else:
+            # 2. Sinon, extraction par Claude sur le HTML nettoyé.
+            raw_events = await self.extract_events_with_claude(clean_html(html))
         return [
             event
             for raw in raw_events
@@ -258,6 +268,97 @@ class MuseumScraperCollector(BaseCollector):
             "raw_data": raw,
             "museum": {"name": self.target.museum_name, "website_url": _site_root(self.target.url)},
         }
+
+
+# schema.org -> types canoniques internes
+JSONLD_TYPE_MAP = {
+    "ExhibitionEvent": "exposition",
+    "VisualArtsEvent": "exposition",
+    "MusicEvent": "concert",
+    "TheaterEvent": "spectacle",
+    "DanceEvent": "spectacle",
+    "ScreeningEvent": "spectacle",
+    "EducationEvent": "atelier",
+}
+
+
+def extract_events_from_jsonld(html: str) -> list[dict[str, Any]]:
+    """Extrait les événements schema.org (`application/ld+json`) d'une page.
+
+    Retourne des dictionnaires au même format que la sortie de Claude
+    (titre/date_debut/...), pour que `normalize()` traite les deux chemins
+    de façon identique.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    nodes: list[dict[str, Any]] = []
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+        except json.JSONDecodeError:
+            continue
+        nodes.extend(_jsonld_event_nodes(data))
+    events = [_jsonld_to_raw(node) for node in nodes]
+    return [e for e in events if e.get("titre") and e.get("date_debut")]
+
+
+def _jsonld_event_nodes(node: Any) -> list[dict[str, Any]]:
+    """Parcourt récursivement listes et @graph à la recherche de *Event."""
+    if isinstance(node, list):
+        return [event for item in node for event in _jsonld_event_nodes(item)]
+    if isinstance(node, dict):
+        if "@graph" in node:
+            return _jsonld_event_nodes(node["@graph"])
+        node_type = node.get("@type")
+        types = node_type if isinstance(node_type, list) else [node_type]
+        if any(isinstance(t, str) and t.endswith("Event") for t in types):
+            return [node]
+    return []
+
+
+def _jsonld_to_raw(node: dict[str, Any]) -> dict[str, Any]:
+    start = str(node.get("startDate") or "")
+    end = str(node.get("endDate") or "")
+
+    image = node.get("image")
+    if isinstance(image, list):
+        image = image[0] if image else None
+    if isinstance(image, dict):
+        image = image.get("url")
+
+    offers = node.get("offers") or {}
+    if isinstance(offers, list):
+        offers = offers[0] if offers else {}
+    price = offers.get("price") if isinstance(offers, dict) else None
+    prix = None
+    if price is not None:
+        if str(price) in ("0", "0.0", "0.00"):
+            prix = "Gratuit"
+        else:
+            prix = f"{price} {offers.get('priceCurrency') or '€'}".replace("EUR", "€").strip()
+
+    location = node.get("location") or {}
+    if isinstance(location, list):
+        location = location[0] if location else {}
+
+    node_type = node.get("@type")
+    if isinstance(node_type, list):
+        node_type = next((t for t in node_type if t in JSONLD_TYPE_MAP), node_type[0] if node_type else None)
+
+    return {
+        "titre": node.get("name"),
+        "description": node.get("description"),
+        "date_debut": start[:10] or None,
+        "date_fin": end[:10] or None,
+        # Une date sans composante horaire ne doit pas devenir "00:00"
+        "heure_debut": start if "T" in start else None,
+        "heure_fin": end if "T" in end else None,
+        "lieu": location.get("name") if isinstance(location, dict) else None,
+        # None -> normalize() retombera sur le titre pour déduire le type
+        "type": JSONLD_TYPE_MAP.get(node_type) if isinstance(node_type, str) else None,
+        "url": node.get("url"),
+        "image_url": image,
+        "prix": prix,
+    }
 
 
 def clean_html(html: str) -> str:

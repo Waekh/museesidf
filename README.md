@@ -19,7 +19,7 @@ combinant plusieurs sources de données ouvertes et du scraping assisté par IA.
 - **Scheduler** : APScheduler (collectes quotidiennes à 6h, alertes à 8h, nettoyage à 2h)
 - **Scraping** : httpx + BeautifulSoup4 + Playwright (pages JS) + Claude API (`claude-sonnet-4-6`)
 - **Frontend** : React 18, Vite, TailwindCSS, Leaflet (carte)
-- **Tests** : pytest (backend, 48 tests) + Vitest (frontend, 11 tests)
+- **Tests** : pytest (backend, 59 tests) + Vitest (frontend, 13 tests) — CI GitHub Actions
 
 ## Démarrage rapide
 
@@ -34,14 +34,23 @@ docker compose up --build
 Pour déclencher une collecte manuellement (sans attendre le cron de 6h) :
 
 ```bash
-docker compose exec worker python -c "
-import asyncio
-from app.collectors.culture_gouv import sync_museums
-from app.collectors.paris_opendata import ParisOpenDataCollector
-asyncio.run(sync_museums())
-asyncio.run(ParisOpenDataCollector().run())
-"
+docker compose exec worker python -m app.cli collect all      # tout
+docker compose exec worker python -m app.cli collect museums  # référentiel seul
+docker compose exec worker python -m app.cli collect paris    # Que Faire à Paris ?
+docker compose exec worker python -m app.cli cleanup          # purge manuelle
+docker compose exec worker python -m app.cli send-alerts weekly
 ```
+
+## Déploiement production
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Le frontend est buildé (Vite) puis servi par **Nginx** sur le port 80, qui fait
+aussi office de reverse proxy `/api` vers FastAPI. PostgreSQL n'est pas exposé
+sur l'hôte et utilise un volume persistant dédié (`pgdata_prod`). Tous les
+services redémarrent automatiquement (`restart: unless-stopped`).
 
 ## Architecture
 
@@ -98,11 +107,12 @@ cd frontend && npm install && npm test
 
 - **Scraping responsable** : robots.txt respecté, User-Agent `MuseesIDF-Bot/1.0`,
   délai de 2 s entre requêtes, HTML mis en cache 24 h (limite aussi le coût Claude API).
+- **Coût IA maîtrisé** : si une page publie des données structurées JSON-LD
+  (schema.org, ex. Château de Versailles), elles sont parsées directement —
+  Claude n'est appelé que pour les pages sans données structurées.
 - **Playwright** : requis uniquement pour le Centre Pompidou (page JS). Décommenter
   `playwright install` dans `backend/Dockerfile` pour l'activer ; sinon la cible est
   ignorée proprement.
 - **Fuseaux** : horodatages système en UTC ; dates/heures d'événements en Europe/Paris.
 - **RGPD** : désinscription en un clic ; abonnements inactifs purgés après un an.
-- **Production** : servir le frontend via `npm run build` + Nginx (reverse proxy vers
-  l'API), retirer le montage des volumes de dev du `docker-compose.yml` et passer
-  `uvicorn` derrière `--workers`.
+- **CI** : GitHub Actions exécute pytest, Vitest et le build TypeScript à chaque push.
