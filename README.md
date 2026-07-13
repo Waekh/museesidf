@@ -19,7 +19,7 @@ combinant plusieurs sources de données ouvertes et du scraping assisté par IA.
 - **Scheduler** : APScheduler (collectes quotidiennes à 6h, alertes à 8h, nettoyage à 2h)
 - **Scraping** : httpx + BeautifulSoup4 + Playwright (pages JS) + Claude API (`claude-sonnet-4-6`)
 - **Frontend** : React 18, Vite, TailwindCSS, Leaflet (carte)
-- **Tests** : pytest (backend, 65 tests) + Vitest (frontend, 13 tests) — CI GitHub Actions
+- **Tests** : pytest (backend, 68 tests) + Vitest (frontend, 13 tests) — CI GitHub Actions
 
 ## Démarrage rapide
 
@@ -114,10 +114,12 @@ L'app n'affiche que ce que les collecteurs ont chargé. Selon la configuration :
 | OpenAgenda | événements toute IDF | `OPENAGENDA_API_KEY` |
 | Scraping (Louvre, Orsay…) | agendas des grands musées | `ANTHROPIC_API_KEY` (+ Playwright) |
 
-Le référentiel est **amorcé automatiquement au démarrage du worker** si la base
-est vide : la carte est peuplée sur toute l'IDF (Louvre inclus) sans attendre le
-cron de 6h. Pour n'avoir que Paris, c'est le signe que seul « Que Faire à Paris ? »
-a tourné — lancez `python -m app.cli collect museums` pour charger tout l'IDF, et
+Le référentiel est **amorcé automatiquement au démarrage** si la base est vide —
+que le scheduler tourne dans le worker (docker-compose) ou soit intégré à l'API
+(déploiement Render). La carte est ainsi peuplée sur toute l'IDF (Louvre inclus)
+sans attendre le cron de 6h. Pour n'avoir que Paris, c'est le signe que seul
+« Que Faire à Paris ? » a tourné — lancez `python -m app.cli collect museums`
+(ou `POST /api/admin/collect?secret=<SECRET_KEY>`) pour charger tout l'IDF, et
 renseignez `OPENAGENDA_API_KEY` / `ANTHROPIC_API_KEY` pour les événements au-delà
 de Paris.
 

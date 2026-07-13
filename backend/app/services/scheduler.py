@@ -15,10 +15,31 @@ from app.collectors.paris_opendata import ParisOpenDataCollector
 from app.collectors.scraper import run_all_scrapers
 from app.config import get_settings
 from app.database import async_session_maker
-from app.models import AlertSubscription, Event
+from app.models import AlertSubscription, Event, Museum
 from app.services import mailer
 
 logger = logging.getLogger(__name__)
+
+
+async def bootstrap_if_empty() -> None:
+    """Première collecte si la table museums est vide (déploiement neuf).
+
+    Amorce le référentiel des musées IDF (carte peuplée sur toute la région)
+    et les événements « Que Faire à Paris ? », tous deux sans clé requise, pour
+    que l'app ne soit pas vide en attendant le premier cron de 6h. Appelé au
+    démarrage du worker et de l'API (lifespan).
+    """
+    async with async_session_maker() as session:
+        count = (await session.execute(select(func.count(Museum.id)))).scalar_one()
+    if count > 0:
+        logger.info("Base déjà peuplée (%d musées) — pas d'amorçage", count)
+        return
+    logger.info("Base vide — amorçage du référentiel musées + Que Faire à Paris")
+    try:
+        await sync_museums()
+        await ParisOpenDataCollector().run()
+    except Exception as exc:  # noqa: BLE001 — l'amorçage ne doit jamais bloquer le démarrage
+        logger.exception("Amorçage initial en échec : %s", exc)
 
 
 async def collect_openagenda() -> None:

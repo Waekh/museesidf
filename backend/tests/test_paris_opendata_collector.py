@@ -5,11 +5,13 @@ from sqlalchemy import select
 from app.collectors.paris_opendata import ParisOpenDataCollector
 from app.models import Event, Museum
 
+# Noms de champs réels de l'API « Que Faire à Paris ? » (qfap_tags,
+# description, image_couverture) — cf. fix(collectors): adapt to OpenData fields.
 SAMPLE_RAW = {
     "id": "evt-42",
     "title": "Atelier gravure au Petit Palais",
     "lead_text": "Initiation à la gravure.",
-    "body": "Un atelier pour découvrir la gravure sur cuivre.",
+    "description": "Un atelier pour découvrir la gravure sur cuivre.",
     "date_start": "2026-10-05T14:00:00+02:00",
     "date_end": "2026-10-05T17:00:00+02:00",
     "address_name": "Petit Palais",
@@ -19,8 +21,7 @@ SAMPLE_RAW = {
     "lat_lon": {"lat": 48.866, "lon": 2.314},
     "url": "https://quefaire.paris.fr/evt-42",
     "cover_url": "https://cdn.paris.fr/img.jpg",
-    "tags": ["musée", "atelier"],
-    "category": "Atelier",
+    "qfap_tags": "musée, atelier, gravure",
     "audience": "Enfants à partir de 8 ans",
     "price_type": "payant",
 }

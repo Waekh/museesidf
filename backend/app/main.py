@@ -24,7 +24,9 @@ async def lifespan(application: FastAPI):
     """
     scheduler = None
     if not os.getenv("DISABLE_EMBEDDED_SCHEDULER"):
-        from app.services.scheduler import create_scheduler
+        import asyncio
+
+        from app.services.scheduler import bootstrap_if_empty, create_scheduler
 
         scheduler = create_scheduler()
         scheduler.start()
@@ -32,6 +34,8 @@ async def lifespan(application: FastAPI):
             "Scheduler intégré démarré — %d jobs planifiés",
             len(scheduler.get_jobs()),
         )
+        # Amorçage en tâche de fond : ne bloque pas le health check Render
+        asyncio.create_task(bootstrap_if_empty())
     yield
     if scheduler is not None:
         scheduler.shutdown()
