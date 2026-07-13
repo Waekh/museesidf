@@ -1,6 +1,7 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,7 +72,7 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/api/admin/collect", tags=["admin"])
-async def trigger_collect(secret: str = "") -> dict[str, str]:
+async def trigger_collect(secret: str = "") -> dict[str, Any]:
     """Déclenche manuellement une collecte de données.
 
     Protégé par SECRET_KEY pour éviter les abus.
@@ -90,10 +91,21 @@ async def trigger_collect(secret: str = "") -> dict[str, str]:
 
     # Lancer les collectes en parallèle (musées d'abord, puis événements)
     logger.info("Collecte manuelle déclenchée")
-    await sync_museums()
-    await asyncio.gather(
-        OpenAgendaCollector().run(),
-        ParisOpenDataCollector().run(),
-    )
-    return {"status": "collection started"}
+    try:
+        museum_count = await sync_museums()
+        results = await asyncio.gather(
+            OpenAgendaCollector().run(),
+            ParisOpenDataCollector().run(),
+            return_exceptions=True
+        )
+        
+        return {
+            "status": "collection finished",
+            "museums_synced": museum_count,
+            "openagenda_result": results[0] if not isinstance(results[0], Exception) else str(results[0]),
+            "paris_opendata_result": results[1] if not isinstance(results[1], Exception) else str(results[1]),
+        }
+    except Exception as e:
+        logger.error(f"Error during collection: {e}")
+        return {"status": "error", "error": str(e)}
 
