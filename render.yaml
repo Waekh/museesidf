@@ -1,8 +1,11 @@
-# Render Blueprint — déploie l'API, le worker et PostgreSQL en un clic.
+# Render Blueprint — déploie l'API et PostgreSQL en un clic.
+#
+# Le scheduler APScheduler est intégré dans le processus API (lifespan),
+# pas besoin d'un worker séparé (non dispo sur le plan gratuit).
 #
 # 1. Pusher ce fichier sur le repo GitHub
 # 2. Sur https://dashboard.render.com → New → Blueprint → sélectionner le repo
-# 3. Render détecte render.yaml et crée les 3 services + la BDD
+# 3. Render détecte render.yaml et crée le service + la BDD
 # 4. Renseigner les variables d'environnement marquées "sync: false"
 #
 # Doc : https://docs.render.com/infrastructure-as-code
@@ -14,7 +17,7 @@ databases:
     user: museesidf
 
 services:
-  # ── API (FastAPI) ──────────────────────────────────────────────────
+  # ── API (FastAPI + scheduler intégré) ──────────────────────────────
   - type: web
     name: museesidf-api
     runtime: docker
@@ -39,23 +42,3 @@ services:
         value: claude-sonnet-4-6
 
     healthCheckPath: /api/health
-
-  # ── Worker (APScheduler — scraping périodique) ─────────────────────
-  - type: worker
-    name: museesidf-worker
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile.worker
-    dockerContext: ./backend
-    plan: free
-
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: museesidf-db
-          property: connectionString
-      - key: OPENAGENDA_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: CLAUDE_MODEL
-        value: claude-sonnet-4-6

@@ -8,7 +8,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-musees_idf}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-musees_idf}" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,6 +21,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://user:password@db:5432/musees_idf}
+      DISABLE_EMBEDDED_SCHEDULER: "1" # le worker séparé gère le scheduler en dev
     depends_on:
       db:
         condition: service_healthy
