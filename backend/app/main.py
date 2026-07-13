@@ -68,3 +68,32 @@ app.include_router(alerts.router)
 @app.get("/api/health", tags=["health"])
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/admin/collect", tags=["admin"])
+async def trigger_collect(secret: str = "") -> dict[str, str]:
+    """Déclenche manuellement une collecte de données.
+
+    Protégé par SECRET_KEY pour éviter les abus.
+    Utilisation : POST /api/admin/collect?secret=<SECRET_KEY>
+    """
+    if secret != settings.secret_key:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="Clé invalide")
+
+    import asyncio
+
+    from app.collectors.culture_gouv import sync_museums
+    from app.collectors.openagenda import OpenAgendaCollector
+    from app.collectors.paris_opendata import ParisOpenDataCollector
+
+    # Lancer les collectes en parallèle (musées d'abord, puis événements)
+    logger.info("Collecte manuelle déclenchée")
+    await sync_museums()
+    await asyncio.gather(
+        OpenAgendaCollector().run(),
+        ParisOpenDataCollector().run(),
+    )
+    return {"status": "collection started"}
+
