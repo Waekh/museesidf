@@ -1,0 +1,86 @@
+# Render Blueprint — déploie l'API, le worker et PostgreSQL en un clic.
+#
+# 1. Pusher ce fichier sur le repo GitHub
+# 2. Sur https://dashboard.render.com → New → Blueprint → sélectionner le repo
+# 3. Render détecte render.yaml et crée les 3 services + la BDD
+# 4. Renseigner les variables d'environnement marquées "sync: false"
+#
+# Doc : https://docs.render.com/infrastructure-as-code
+
+databases:
+  - name: museesidf-db
+    plan: free          # 256 Mo — suffisant pour commencer
+    databaseName: musees_idf
+    user: museesidf
+
+services:
+  # ── API (FastAPI) ──────────────────────────────────────────────────
+  - type: web
+    name: museesidf-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free          # 512 Mo RAM — passer à "starter" si besoin
+
+    # Render expose le port indiqué dans $PORT — on le passe à uvicorn
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: museesidf-db
+          property: connectionString
+        # Render donne une URL psycopg2 (postgresql://…), on la transforme
+        # en asyncpg via le script de démarrage
+      - key: FRONTEND_URL
+        value: https://ton-app.vercel.app   # ← REMPLACER par ton domaine Vercel
+      - key: SECRET_KEY
+        generateValue: true
+      - key: OPENAGENDA_API_KEY
+        sync: false     # à renseigner manuellement dans le dashboard
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-4-6
+      - key: PYTHON_VERSION
+        value: "3.12"
+
+    buildCommand: ""
+    startCommand: |
+      sh -c "
+        # Transforme l'URL PostgreSQL de Render (postgresql://) en asyncpg
+        export DATABASE_URL=$(echo $DATABASE_URL | sed 's|^postgres://|postgresql+asyncpg://|; s|^postgresql://|postgresql+asyncpg://|')
+        # Applique les migrations
+        cd /code && alembic upgrade head
+        # Démarre l'API
+        uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
+      "
+
+    healthCheckPath: /api/health
+
+  # ── Worker (APScheduler — scraping périodique) ─────────────────────
+  - type: worker
+    name: museesidf-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: museesidf-db
+          property: connectionString
+      - key: OPENAGENDA_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-4-6
+      - key: PYTHON_VERSION
+        value: "3.12"
+
+    buildCommand: ""
+    startCommand: |
+      sh -c "
+        export DATABASE_URL=$(echo $DATABASE_URL | sed 's|^postgres://|postgresql+asyncpg://|; s|^postgresql://|postgresql+asyncpg://|')
+        python -m app.worker
+      "
