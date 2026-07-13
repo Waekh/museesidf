@@ -50,7 +50,7 @@ async def sync_museums() -> int:
     count = 0
     async with async_session_maker() as session:
         for raw in records:
-            name = raw.get("nom_officiel") or raw.get("nom_du_musee")
+            name = raw.get("nom_officiel_du_musee") or raw.get("nom_officiel") or raw.get("nom_du_musee")
             if not name:
                 continue
             slug = normalizer.slugify(name)

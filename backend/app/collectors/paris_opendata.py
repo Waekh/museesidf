@@ -27,8 +27,8 @@ class ParisOpenDataCollector(BaseCollector):
         events: list[dict[str, Any]] = []
         today = date.today().isoformat()
         where = (
-            f'(category like "musée" OR tags like "musée" OR category like "expo" '
-            f'OR tags like "exposition") AND date_start >= date\'{today}\''
+            f'(qfap_tags like "%musée%" OR qfap_tags like "%expo%" '
+            f'OR title like "%musée%" OR title like "%expo%") AND date_start >= date\'{today}\''
         )
         async with httpx.AsyncClient(timeout=30) as client:
             offset = 0
@@ -62,13 +62,11 @@ class ParisOpenDataCollector(BaseCollector):
             return None
 
         lat_lon = raw.get("lat_lon") or {}
-        tags = raw.get("tags") or []
-        if isinstance(tags, str):
-            tags = [tags]
-        type_hint = " ".join([str(raw.get("category") or ""), *map(str, tags), str(title)])
+        qfap_tags = raw.get("qfap_tags") or ""
+        type_hint = " ".join([str(qfap_tags), str(title)])
 
         description = raw.get("lead_text") or ""
-        body = raw.get("body") or ""
+        body = raw.get("description") or "" # "body" became "description"
         if body and body not in description:
             description = f"{description}\n\n{body}".strip()
 
@@ -87,10 +85,10 @@ class ParisOpenDataCollector(BaseCollector):
             "time_end": normalizer.parse_time(raw.get("date_end")),
             "is_permanent": False,
             "price_info": price,
-            "image_url": raw.get("cover_url") or raw.get("image"),
+            "image_url": raw.get("cover_url") or raw.get("image_couverture"),
             "event_url": raw.get("url"),
             "audience": normalizer.normalize_audience(raw.get("audience")),
-            "raw_data": {"id": raw.get("id"), "category": raw.get("category"), "tags": tags},
+            "raw_data": {"id": raw.get("id"), "qfap_tags": qfap_tags},
             "museum": {
                 "name": raw.get("address_name"),
                 "address": raw.get("address_street"),
