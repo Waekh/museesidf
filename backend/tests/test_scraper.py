@@ -1,9 +1,12 @@
 from datetime import date
 
+import pytest
+
 from app.collectors.scraper import (
     SCRAPE_TARGETS,
     MuseumScraperCollector,
     clean_html,
+    extract_og_image,
     parse_claude_json,
 )
 
@@ -64,3 +67,72 @@ def test_normalize_builds_absolute_urls_and_stable_id():
 def test_normalize_rejects_event_without_date():
     collector = MuseumScraperCollector(LOUVRE)
     assert collector.normalize({"titre": "Sans date", "date_debut": None}) is None
+
+
+def test_extract_og_image_finds_property_meta():
+    html = (
+        '<html><head><meta property="og:image" content="https://x.fr/hero.jpg">'
+        "</head><body></body></html>"
+    )
+    assert extract_og_image(html) == "https://x.fr/hero.jpg"
+
+
+def test_extract_og_image_falls_back_to_twitter_card():
+    html = '<html><head><meta name="twitter:image" content="https://x.fr/tw.jpg"></head></html>'
+    assert extract_og_image(html) == "https://x.fr/tw.jpg"
+
+
+def test_extract_og_image_prefers_og_over_twitter():
+    html = (
+        '<meta property="og:image" content="https://x.fr/og.jpg">'
+        '<meta name="twitter:image" content="https://x.fr/tw.jpg">'
+    )
+    assert extract_og_image(html) == "https://x.fr/og.jpg"
+
+
+def test_extract_og_image_absent_returns_none():
+    assert extract_og_image("<html><head></head><body></body></html>") is None
+
+
+async def test_collect_uses_page_og_image_when_event_has_none(monkeypatch):
+    """L'image la plus mise en valeur de la page sert de repli pour les
+    événements sans image propre (ex. Château de Versailles en JSON-LD)."""
+    versailles = next(t for t in SCRAPE_TARGETS if t.slug == "versailles")
+    collector = MuseumScraperCollector(versailles)
+
+    html = """
+    <html><head>
+    <meta property="og:image" content="https://chateauversailles.fr/hero.jpg">
+    <script type="application/ld+json">
+    {"@type": "ExhibitionEvent", "name": "Grandes Eaux", "startDate": "2026-09-04"}
+    </script>
+    </head><body></body></html>
+    """
+    monkeypatch.setattr(collector, "fetch_html", lambda url: _async_return(html))
+
+    events = await collector.collect()
+    assert len(events) == 1
+    assert events[0]["image_url"] == "https://chateauversailles.fr/hero.jpg"
+
+
+async def test_collect_keeps_event_own_image_over_page_fallback(monkeypatch):
+    versailles = next(t for t in SCRAPE_TARGETS if t.slug == "versailles")
+    collector = MuseumScraperCollector(versailles)
+
+    html = """
+    <html><head>
+    <meta property="og:image" content="https://chateauversailles.fr/hero.jpg">
+    <script type="application/ld+json">
+    {"@type": "ExhibitionEvent", "name": "Grandes Eaux", "startDate": "2026-09-04",
+     "image": "https://chateauversailles.fr/specific.jpg"}
+    </script>
+    </head><body></body></html>
+    """
+    monkeypatch.setattr(collector, "fetch_html", lambda url: _async_return(html))
+
+    events = await collector.collect()
+    assert events[0]["image_url"] == "https://chateauversailles.fr/specific.jpg"
+
+
+async def _async_return(value):
+    return value

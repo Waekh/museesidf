@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import type { Event } from "../types";
@@ -87,5 +87,23 @@ describe("EventCard", () => {
     expect(screen.getByText("Tarif non communiqué")).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /En savoir plus/ })).not.toBeInTheDocument();
+  });
+
+  it("l'image renvoie vers la page de détail de l'événement", () => {
+    renderCard(FULL_EVENT);
+
+    const imageLink = screen.getByRole("link", { name: "Voir l'événement Monet en lumière" });
+    expect(imageLink).toHaveAttribute("href", "/evenements/1");
+    expect(imageLink.querySelector("img")).toHaveAttribute("src", "https://example.com/img.jpg");
+  });
+
+  it("affiche l'icône de repli si l'image échoue au chargement", () => {
+    renderCard(FULL_EVENT);
+
+    const img = screen.getByRole("img", { name: "Monet en lumière" });
+    fireEvent.error(img);
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.getByText("❦")).toBeInTheDocument();
   });
 });

@@ -121,6 +121,15 @@ class MuseumScraperCollector(BaseCollector):
                 "[%s] aucune donnée structurée et IA désactivée — page ignorée (mode gratuit)",
                 self.source,
             )
+
+        # Repli : l'image la plus mise en valeur de la page (meta og:image /
+        # twitter:image) pour les événements qui n'ont pas leur propre image.
+        page_image = extract_og_image(html)
+        if page_image:
+            raw_events = [
+                {**raw, "image_url": raw.get("image_url") or page_image} for raw in raw_events
+            ]
+
         return [
             event
             for raw in raw_events
@@ -473,6 +482,24 @@ def _pick_image(node: dict[str, Any]) -> str | None:
                 return value[key]
     if isinstance(value, list) and value:
         return _pick_image({"image": value[0]})
+    return None
+
+
+def extract_og_image(html: str) -> str | None:
+    """Extrait l'image la plus mise en valeur de la page (Open Graph /
+    Twitter Card), utilisée comme repli quand un événement scrapé n'a pas
+    sa propre image (JSON-LD/NEXT_DATA/IA incomplets sur ce point)."""
+    soup = BeautifulSoup(html, "lxml")
+    for attrs in (
+        {"property": "og:image"},
+        {"property": "og:image:secure_url"},
+        {"name": "twitter:image"},
+        {"name": "twitter:image:src"},
+    ):
+        tag = soup.find("meta", attrs=attrs)
+        content = tag.get("content") if tag else None
+        if isinstance(content, str) and content.strip():
+            return content.strip()
     return None
 
 

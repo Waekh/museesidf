@@ -74,6 +74,43 @@ def test_normalize_survives_string_fields_where_objects_expected():
     assert event["image_url"] is None
 
 
+def test_openagenda_image_combines_cdn_base_and_filename():
+    """Schéma réaliste : `base.url` est juste la racine du CDN, sans le nom
+    du fichier — il faut les combiner pour obtenir une URL chargeable.
+    Avant correctif, l'image ne s'affichait jamais côté frontend."""
+    raw = dict(
+        SAMPLE_RAW,
+        image={"base": {"url": "https://cdn.openagenda.com/"}, "filename": "abc123.jpg"},
+    )
+    event = OpenAgendaCollector.normalize(raw)
+    assert event["image_url"] == "https://cdn.openagenda.com/abc123.jpg"
+
+
+def test_openagenda_image_falls_back_to_variant_filename():
+    raw = dict(
+        SAMPLE_RAW,
+        image={"base": {"url": "https://cdn.openagenda.com"}, "variants": [{"filename": "v1.jpg"}]},
+    )
+    event = OpenAgendaCollector.normalize(raw)
+    assert event["image_url"] == "https://cdn.openagenda.com/v1.jpg"
+
+
+def test_openagenda_image_prefers_direct_url_field():
+    raw = dict(SAMPLE_RAW, image={"url": "https://cdn.openagenda.com/direct.jpg"})
+    event = OpenAgendaCollector.normalize(raw)
+    assert event["image_url"] == "https://cdn.openagenda.com/direct.jpg"
+
+
+def test_openagenda_image_none_when_unusable():
+    # Filename sans base CDN exploitable : pas d'URL à construire
+    raw = dict(SAMPLE_RAW, image={"filename": "orphan.jpg"})
+    event = OpenAgendaCollector.normalize(raw)
+    assert event["image_url"] is None
+
+    raw2 = dict(SAMPLE_RAW, image={})
+    assert OpenAgendaCollector.normalize(raw2)["image_url"] is None
+
+
 async def test_save_creates_event_and_museum(session):
     collector = OpenAgendaCollector()
     normalized = OpenAgendaCollector.normalize(SAMPLE_RAW)

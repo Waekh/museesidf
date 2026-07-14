@@ -126,11 +126,7 @@ class OpenAgendaCollector(BaseCollector):
             return None
 
         location = _obj(raw.get("location"))
-        image = _obj(raw.get("image"))
-        base = _obj(image.get("base"))
-        variants = image.get("variants") if isinstance(image.get("variants"), list) else []
-        first_variant = variants[0] if variants and isinstance(variants[0], dict) else {}
-        image_url = base.get("url") or first_variant.get("filename")
+        image_url = _openagenda_image_url(_obj(raw.get("image")))
 
         origin = _obj(raw.get("originAgenda"))
         slug = raw.get("slug")
@@ -180,3 +176,41 @@ def _obj(value: Any) -> dict[str, Any]:
     """Garantit un dict : l'API renvoie parfois une chaîne/null là où on
     attend un objet, ce qui ferait planter un appel .get()."""
     return value if isinstance(value, dict) else {}
+
+
+def _openagenda_image_url(image: dict[str, Any]) -> str | None:
+    """Construit l'URL absolue de l'image d'un événement OpenAgenda.
+
+    Bug corrigé : l'image OpenAgenda combine un préfixe CDN (`base.url`,
+    souvent juste le domaine, ex. "https://cdn.openagenda.com/") avec un nom
+    de fichier séparé (`filename`, au niveau de l'image ou d'une variante).
+    Ni l'un ni l'autre pris isolément ne donne une URL chargeable — c'était
+    la cause des images jamais affichées côté frontend (URL cassée que le
+    navigateur ne pouvait pas résoudre).
+    """
+    if not image:
+        return None
+
+    direct = image.get("url")
+    if isinstance(direct, str) and direct.startswith("http"):
+        return direct
+
+    base = _obj(image.get("base"))
+    base_url = base.get("url") if isinstance(base.get("url"), str) else ""
+
+    variants = image.get("variants") if isinstance(image.get("variants"), list) else []
+    first_variant = variants[0] if variants and isinstance(variants[0], dict) else {}
+
+    for candidate in (
+        first_variant.get("url"),
+        image.get("filename"),
+        first_variant.get("filename"),
+    ):
+        if not isinstance(candidate, str) or not candidate:
+            continue
+        if candidate.startswith("http"):
+            return candidate
+        if base_url:
+            return base_url.rstrip("/") + "/" + candidate.lstrip("/")
+
+    return base_url if base_url.startswith("http") else None

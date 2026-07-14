@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { Event } from "../types";
 
@@ -26,23 +27,26 @@ interface EventCardProps {
 
 export default function EventCard({ event }: EventCardProps) {
   const badgeClass = TYPE_COLORS[event.event_type ?? "autre"] ?? TYPE_COLORS.autre;
-  const imageUrl = event.image_url ?? event.museum?.logo_url ?? null;
+  const [imageFailed, setImageFailed] = useState(false);
+  const imageUrl = !imageFailed ? event.image_url ?? event.museum?.logo_url ?? null : null;
 
   return (
     <article
       data-testid="event-card"
       className="group flex flex-col overflow-hidden rounded-xl border border-ink/10 dark:border-cream/10 bg-white dark:bg-ink/60 shadow-sm hover:shadow-md transition-shadow"
     >
-      <div className="h-40 bg-ink/5 dark:bg-cream/5 overflow-hidden">
+      <Link
+        to={`/evenements/${event.id}`}
+        aria-label={`Voir l'événement ${event.title}`}
+        className="block h-40 bg-ink/5 dark:bg-cream/5 overflow-hidden"
+      >
         {imageUrl ? (
           <img
             src={imageUrl}
             alt={event.title}
             loading="lazy"
             className="h-full w-full object-cover group-hover:scale-[1.02] transition-transform"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
+            onError={() => setImageFailed(true)}
           />
         ) : (
           <div
@@ -52,7 +56,7 @@ export default function EventCard({ event }: EventCardProps) {
             ❦
           </div>
         )}
-      </div>
+      </Link>
 
       <div className="flex flex-1 flex-col gap-2 p-4">
         <div className="flex items-center gap-2">
