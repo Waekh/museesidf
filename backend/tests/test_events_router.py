@@ -171,3 +171,25 @@ async def test_museums_endpoint_counts_upcoming(client, seed):
 
     resp = await client.get("/api/museums", params={"department": "Paris"})
     assert [m["name"] for m in resp.json()] == ["Musée d'Orsay"]
+
+
+async def test_museums_filtered_by_event_type_for_map(client, seed):
+    # Un filtre d'événement ne retient que les musées ayant un événement matchant
+    resp = await client.get("/api/museums", params={"event_type": "visite"})
+    names = [m["name"] for m in resp.json()]
+    assert names == ["MAC VAL"]  # seul MAC VAL a une visite
+
+    resp = await client.get("/api/museums", params={"event_type": "atelier"})
+    data = resp.json()
+    assert [m["name"] for m in data] == ["Musée d'Orsay"]
+    assert data[0]["upcoming_events_count"] == 1  # compteur limité au filtre
+
+
+async def test_museums_filtered_by_audience_for_map(client, seed):
+    resp = await client.get("/api/museums", params={"audience": "enfants"})
+    assert [m["name"] for m in resp.json()] == ["Musée d'Orsay"]
+
+
+async def test_museums_multi_department_csv(client, seed):
+    resp = await client.get("/api/museums", params={"department": "Paris,Val-de-Marne"})
+    assert {m["name"] for m in resp.json()} == {"Musée d'Orsay", "MAC VAL"}

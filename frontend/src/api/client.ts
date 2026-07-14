@@ -41,10 +41,16 @@ export function fetchEvent(id: number): Promise<Event> {
   return getJson<Event>(`/api/events/${id}`);
 }
 
-export function fetchMuseums(options?: { department?: string; hasUpcomingEvents?: boolean }): Promise<Museum[]> {
+export function fetchMuseums(filters?: EventFilters): Promise<Museum[]> {
   const params = new URLSearchParams();
-  if (options?.department) params.set("department", options.department);
-  if (options?.hasUpcomingEvents) params.set("has_upcoming_events", "true");
+  if (filters) {
+    if (filters.departments.length > 0) params.set("department", filters.departments.join(","));
+    if (filters.eventTypes.length > 0) params.set("event_type", filters.eventTypes.join(","));
+    if (filters.audience) params.set("audience", filters.audience);
+    if (filters.keyword) params.set("keyword", filters.keyword);
+    if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+    if (filters.dateTo) params.set("date_to", filters.dateTo);
+  }
   return getJson<Museum[]>("/api/museums", params);
 }
 

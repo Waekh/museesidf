@@ -31,7 +31,14 @@ export default function MapView({ museums, onSelectMuseum }: MapViewProps) {
   );
 
   return (
-    <div className="h-[600px] overflow-hidden rounded-xl border border-ink/10 dark:border-cream/10">
+    <div className="relative h-[600px] overflow-hidden rounded-xl border border-ink/10 dark:border-cream/10">
+      {located.length === 0 && (
+        <div className="absolute inset-0 z-[500] flex items-center justify-center bg-cream/70 dark:bg-ink/70 pointer-events-none">
+          <p className="rounded-lg bg-white dark:bg-ink px-4 py-2 text-sm shadow">
+            Aucun musée ne correspond à ces filtres.
+          </p>
+        </div>
+      )}
       <MapContainer center={PARIS_CENTER} zoom={10} scrollWheelZoom>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'

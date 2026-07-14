@@ -20,8 +20,15 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [view, setView] = useState<"list" | "map">("list");
 
+  // Liste complète (sélecteur de musée) + liste filtrée (marqueurs de la carte)
   const { museums } = useMuseums();
+  const { museums: filteredMuseums } = useMuseums(filters);
   const { data, loading, error } = useEvents(filters, page);
+
+  const mapMuseums =
+    filters.museumId !== null
+      ? filteredMuseums.filter((m) => m.id === filters.museumId)
+      : filteredMuseums;
 
   // Recherche plein texte avec léger debounce
   useEffect(() => {
@@ -105,7 +112,7 @@ export default function Home() {
             />
           ) : (
             <MapView
-              museums={museums}
+              museums={mapMuseums}
               onSelectMuseum={(museumId) => {
                 handleFiltersChange({ ...filters, museumId });
                 setView("list");
