@@ -7,6 +7,11 @@ import Subscribe from "./pages/Subscribe";
 export default function App() {
   return (
     <div className="min-h-screen">
+      <img
+        src="https://iili.io/CGJJRNs.png"
+        alt="Musées d'Île-de-France"
+        className="w-full max-h-64 object-cover"
+      />
       <Navbar />
       <Routes>
         <Route path="/" element={<Home />} />
