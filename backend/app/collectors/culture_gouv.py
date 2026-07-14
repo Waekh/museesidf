@@ -32,10 +32,25 @@ MAX_RECORDS = 5000  # garde-fou pagination
 # nom_officiel_du_musee = champ réel de l'API en ligne (vérifié) — prioritaire
 NAME_FIELDS = ("nom_officiel_du_musee", "nom_officiel", "nom_du_musee", "nom")
 ADDRESS_FIELDS = ("adresse", "adresse_complete", "adresse_1")
-CITY_FIELDS = ("ville", "commune", "nom_de_la_commune")
-POSTAL_FIELDS = ("code_postal", "code_postal_de_la_commune", "cp")
+CITY_FIELDS = ("ville", "commune", "nom_de_la_commune", "commune_du_musee")
+POSTAL_FIELDS = ("code_postal", "code_postal_de_la_commune", "code_postal_du_musee", "cp")
 WEBSITE_FIELDS = ("url", "site_web", "url_du_site_web", "site_internet")
-COORD_FIELDS = ("geo_point_2d", "coordonnees", "coordonnees_geographiques", "geolocalisation")
+COORD_FIELDS = (
+    "geo_point_2d",
+    "coordonnees",
+    "coordonnees_geographiques",
+    "geolocalisation",
+    "geo_point",
+    "geolocalisation_ban",
+)
+REGION_FIELDS = ("region_administrative", "region", "nouvelle_region")
+DEPT_FIELDS = ("departement", "departement_de_la_commune", "nom_du_departement", "dpt")
+
+# Détection Île-de-France
+IDF_DEPT_CODES = {"75", "77", "78", "91", "92", "93", "94", "95"}
+IDF_DEPT_NAMES = {normalizer.strip_accents(n).lower() for n in normalizer.IDF_DEPARTMENTS.values()}
+# Boîte englobante approximative de l'IDF (repli si ni CP ni région exploitables)
+IDF_BBOX = (48.10, 49.25, 1.40, 3.60)  # lat_min, lat_max, lon_min, lon_max
 
 
 def _first(raw: dict[str, Any], fields: tuple[str, ...]) -> Any:
@@ -77,6 +92,58 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
+def _in_idf_bbox(lat: float | None, lon: float | None) -> bool:
+    if lat is None or lon is None:
+        return False
+    lat_min, lat_max, lon_min, lon_max = IDF_BBOX
+    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
+
+
+def _department_from_field(raw: dict[str, Any]) -> str | None:
+    """Déduit un département IDF depuis un champ 'departement' (nom ou code)."""
+    value = _first(raw, DEPT_FIELDS)
+    if value is None:
+        return None
+    text = normalizer.strip_accents(str(value)).lower().strip()
+    # Code à 2 chiffres présent dans la valeur (ex. "78", "Yvelines (78)")
+    for code in IDF_DEPT_CODES:
+        if code in text:
+            return normalizer.IDF_DEPARTMENTS[code]
+    # Nom de département
+    for name in normalizer.IDF_DEPARTMENTS.values():
+        if normalizer.strip_accents(name).lower() in text:
+            return name
+    return None
+
+
+def _region_is_idf(raw: dict[str, Any]) -> bool:
+    value = _first(raw, REGION_FIELDS)
+    if value is None:
+        return False
+    text = normalizer.strip_accents(str(value)).lower()
+    return "ile-de-france" in text or ("ile" in text and "france" in text)
+
+
+def idf_department(
+    raw: dict[str, Any], postal_code: str | None, lat: float | None, lon: float | None
+) -> str | None:
+    """Retourne le département IDF du musée, ou None s'il n'est pas en IDF.
+
+    Multi-signaux, du plus fiable au moins fiable : code postal → champ
+    département → région IDF → position dans la boîte englobante IDF. Cette
+    redondance évite de tout jeter si un seul nom de champ diffère.
+    """
+    dept = normalizer.department_from_postal_code(postal_code)
+    if dept:
+        return dept
+    dept = _department_from_field(raw)
+    if dept:
+        return dept
+    if _region_is_idf(raw) or _in_idf_bbox(lat, lon):
+        return ""  # IDF confirmée mais département précis inconnu
+    return None
+
+
 async def sync_museums() -> int:
     """Upsert des musées IDF depuis le référentiel du ministère de la Culture."""
     records: list[dict[str, Any]] = []
@@ -98,6 +165,13 @@ async def sync_museums() -> int:
                 break
             offset += PAGE_SIZE
 
+    # Diagnostic : noms de champs réels du dataset (utile en cas de 0 musée)
+    if records:
+        logger.info(
+            "Référentiel : champs disponibles du 1er enregistrement : %s",
+            sorted(records[0].keys()),
+        )
+
     count = await upsert_records(records)
     logger.info(
         "Référentiel musées : %d enregistrements récupérés, %d musées IDF synchronisés",
@@ -108,16 +182,19 @@ async def sync_museums() -> int:
 
 
 async def upsert_records(records: list[dict[str, Any]]) -> int:
-    """Filtre l'IDF (par code postal) et met à jour la table museums."""
+    """Filtre l'IDF (multi-signaux) et met à jour la table museums."""
     count = 0
     async with async_session_maker() as session:
         for raw in records:
             name = _first(raw, NAME_FIELDS)
+            if not name:
+                continue
             postal_code = _first(raw, POSTAL_FIELDS)
             postal_code = str(postal_code) if postal_code is not None else None
-            department = normalizer.department_from_postal_code(postal_code)
-            # Ne garder que les musées d'Île-de-France
-            if not name or department is None:
+            lat, lon = _coords(raw)
+
+            department = idf_department(raw, postal_code, lat, lon)
+            if department is None:  # hors Île-de-France
                 continue
 
             slug = normalizer.slugify(name)
@@ -128,11 +205,11 @@ async def upsert_records(records: list[dict[str, Any]]) -> int:
                 museum = Museum(name=name, slug=slug)
                 session.add(museum)
 
-            lat, lon = _coords(raw)
             museum.address = _first(raw, ADDRESS_FIELDS) or museum.address
             museum.city = _first(raw, CITY_FIELDS) or museum.city
             museum.postal_code = postal_code or museum.postal_code
-            museum.department = department or museum.department
+            if department:  # non vide
+                museum.department = department
             if lat is not None:
                 museum.latitude = lat
             if lon is not None:

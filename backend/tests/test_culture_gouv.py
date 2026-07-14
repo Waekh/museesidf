@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select
 
 from app.collectors import culture_gouv
-from app.collectors.culture_gouv import _coords, _first, upsert_records
+from app.collectors.culture_gouv import _coords, _first, idf_department, upsert_records
 from app.models import Museum
 
 
@@ -27,6 +27,35 @@ def test_coords_dict_forms():
 def test_coords_string_form_and_missing():
     assert _coords({"geo_point_2d": "48.86,2.33"}) == (48.86, 2.33)
     assert _coords({}) == (None, None)
+
+
+def test_idf_department_from_postal_code():
+    assert idf_department({}, "75001", None, None) == "Paris"
+    assert idf_department({}, "78000", None, None) == "Yvelines"
+
+
+def test_idf_department_from_department_field_when_no_postal():
+    # Nom de département
+    assert idf_department({"departement": "Seine-Saint-Denis"}, None, None, None) == "Seine-Saint-Denis"
+    # Code de département inclus dans la valeur
+    assert idf_department({"departement": "Yvelines (78)"}, None, None, None) == "Yvelines"
+
+
+def test_idf_department_from_region_field():
+    # Région IDF mais pas de département précis : chaîne vide (= IDF, dept inconnu)
+    assert idf_department({"region_administrative": "Île-de-France"}, None, None, None) == ""
+    assert idf_department({"region": "ILE-DE-FRANCE"}, None, None, None) == ""
+
+
+def test_idf_department_from_bounding_box():
+    # Coordonnées dans l'IDF, aucun autre indice
+    assert idf_department({}, None, 48.86, 2.33) == ""
+
+
+def test_idf_department_rejects_non_idf():
+    # Lyon : hors IDF sur tous les signaux
+    assert idf_department({"region": "Auvergne-Rhône-Alpes"}, "69002", 45.75, 4.85) is None
+    assert idf_department({}, None, None, None) is None
 
 
 @pytest.fixture

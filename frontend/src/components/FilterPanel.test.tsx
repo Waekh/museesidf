@@ -49,7 +49,7 @@ describe("FilterPanel", () => {
     );
   });
 
-  it("applique une période via les date pickers", async () => {
+  it("n'applique la période qu'au clic sur Valider", async () => {
     const onChange = vi.fn();
     render(
       <FilterPanel filters={EMPTY_FILTERS} onChange={onChange} onReset={vi.fn()} museums={[]} />,
@@ -58,9 +58,21 @@ describe("FilterPanel", () => {
     const dateFrom = screen.getByLabelText("Date de début");
     await userEvent.type(dateFrom, "2026-09-01");
 
+    // La saisie seule ne déclenche aucun filtrage
+    expect(onChange).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: /Valider la période/ }));
+
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ dateFrom: "2026-09-01" }),
     );
+  });
+
+  it("désactive le bouton Valider tant que la période n'a pas changé", () => {
+    render(
+      <FilterPanel filters={EMPTY_FILTERS} onChange={vi.fn()} onReset={vi.fn()} museums={[]} />,
+    );
+    expect(screen.getByRole("button", { name: /Valider la période/ })).toBeDisabled();
   });
 
   it("déclenche le reset", async () => {

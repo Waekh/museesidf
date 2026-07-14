@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { EventFilters, Museum } from "../types";
 import { AUDIENCES, EVENT_TYPES, IDF_DEPARTMENTS } from "../types";
 
@@ -15,6 +15,22 @@ function toggle(list: string[], value: string): string[] {
 
 export default function FilterPanel({ filters, onChange, onReset, museums }: FilterPanelProps) {
   const [open, setOpen] = useState(false);
+
+  // La période est saisie en local puis appliquée au clic sur « Valider »
+  // (les cases à cocher, elles, s'appliquent immédiatement).
+  const [draftFrom, setDraftFrom] = useState(filters.dateFrom);
+  const [draftTo, setDraftTo] = useState(filters.dateTo);
+
+  useEffect(() => {
+    setDraftFrom(filters.dateFrom);
+    setDraftTo(filters.dateTo);
+  }, [filters.dateFrom, filters.dateTo]);
+
+  const dateChanged = draftFrom !== filters.dateFrom || draftTo !== filters.dateTo;
+
+  function applyDates() {
+    onChange({ ...filters, dateFrom: draftFrom, dateTo: draftTo });
+  }
 
   return (
     <aside className="md:w-64 shrink-0">
@@ -74,8 +90,10 @@ export default function FilterPanel({ filters, onChange, onReset, museums }: Fil
               <input
                 type="date"
                 aria-label="Date de début"
-                value={filters.dateFrom}
-                onChange={(e) => onChange({ ...filters, dateFrom: e.target.value })}
+                value={draftFrom}
+                max={draftTo || undefined}
+                onChange={(e) => setDraftFrom(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && applyDates()}
                 className="mt-1 w-full rounded-lg border border-ink/20 dark:border-cream/20 bg-transparent px-2 py-1.5 text-sm"
               />
             </label>
@@ -84,11 +102,21 @@ export default function FilterPanel({ filters, onChange, onReset, museums }: Fil
               <input
                 type="date"
                 aria-label="Date de fin"
-                value={filters.dateTo}
-                onChange={(e) => onChange({ ...filters, dateTo: e.target.value })}
+                value={draftTo}
+                min={draftFrom || undefined}
+                onChange={(e) => setDraftTo(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && applyDates()}
                 className="mt-1 w-full rounded-lg border border-ink/20 dark:border-cream/20 bg-transparent px-2 py-1.5 text-sm"
               />
             </label>
+            <button
+              type="button"
+              onClick={applyDates}
+              disabled={!dateChanged}
+              className="w-full rounded-lg bg-ocre px-3 py-1.5 text-sm font-medium text-white hover:bg-ocre-dark disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Valider la période
+            </button>
           </div>
         </fieldset>
 
