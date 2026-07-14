@@ -85,7 +85,11 @@ class ParisOpenDataCollector(BaseCollector):
             "time_end": normalizer.parse_time(raw.get("date_end")),
             "is_permanent": False,
             "price_info": price,
-            "image_url": raw.get("cover_url") or raw.get("image_couverture"),
+            # Champ image tantôt chaîne (cover_url) tantôt objet (image_couverture
+            # peut être {url:...}) : clean_url extrait/valide dans les deux cas
+            "image_url": normalizer.clean_url(raw.get("cover_url"))
+            or normalizer.clean_url(raw.get("image_couverture"))
+            or normalizer.clean_url(raw.get("cover")),
             "event_url": raw.get("url"),
             "audience": normalizer.normalize_audience(raw.get("audience")),
             "raw_data": {"id": raw.get("id"), "qfap_tags": qfap_tags},

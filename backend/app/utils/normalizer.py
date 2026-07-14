@@ -181,3 +181,23 @@ def truncate(value: str | None, max_length: int) -> str | None:
         return None
     value = value.strip()
     return value[:max_length] if len(value) > max_length else value
+
+
+def clean_url(value, max_length: int = 500) -> str | None:
+    """Ne garde que les URLs http(s) réellement chargeables.
+
+    Les sources renvoient parfois un objet {url:...}/{filename:...} au lieu
+    d'une chaîne, un nom de fichier sans domaine, ou une URL trop longue pour
+    la colonne — autant de valeurs qui donnaient des <img> cassés (icône de
+    repli affichée à la place de l'image).
+    """
+    if isinstance(value, dict):
+        value = value.get("url") or value.get("src") or value.get("href")
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value.startswith(("http://", "https://")):
+        return None
+    if len(value) > max_length:  # ne rentre pas dans la colonne, inutilisable tronquée
+        return None
+    return value

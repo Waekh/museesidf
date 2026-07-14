@@ -115,6 +115,10 @@ class BaseCollector(ABC):
                 if field in data:
                     setattr(event, field, data[field])
             event.title = normalizer.truncate(event.title, 500) or event.title
+            # Garde-fou toutes sources : une URL non chargeable (objet, nom de
+            # fichier nu, > 500 car.) vaut mieux absente que cassée à l'affichage
+            event.image_url = normalizer.clean_url(event.image_url)
+            event.event_url = normalizer.clean_url(event.event_url)
             if museum is not None:
                 event.museum = museum
             saved.append(event)

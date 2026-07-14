@@ -56,3 +56,22 @@ def test_normalize_audience():
     assert normalizer.normalize_audience("Jeune public") == "enfants"
     assert normalizer.normalize_audience("Scolaires") == "scolaires"
     assert normalizer.normalize_audience(None) is None
+
+
+def test_clean_url_accepts_valid_http_urls():
+    assert normalizer.clean_url("https://cdn.x.fr/img.jpg") == "https://cdn.x.fr/img.jpg"
+    assert normalizer.clean_url("  http://x.fr/a.png  ") == "http://x.fr/a.png"
+
+
+def test_clean_url_extracts_from_object_fields():
+    # Champ image renvoyé en objet par certaines APIs Opendatasoft
+    assert normalizer.clean_url({"url": "https://x.fr/img.jpg"}) == "https://x.fr/img.jpg"
+    assert normalizer.clean_url({"filename": "img.jpg"}) is None  # pas d'URL chargeable
+
+
+def test_clean_url_rejects_unloadable_values():
+    assert normalizer.clean_url("abc123.jpg") is None  # nom de fichier nu
+    assert normalizer.clean_url("") is None
+    assert normalizer.clean_url(None) is None
+    assert normalizer.clean_url(42) is None
+    assert normalizer.clean_url("https://x.fr/" + "a" * 600) is None  # dépasse la colonne

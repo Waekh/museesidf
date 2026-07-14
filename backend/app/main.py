@@ -113,3 +113,56 @@ async def trigger_collect(secret: str = "") -> dict[str, Any]:
         logger.error(f"Error during collection: {e}")
         return {"status": "error", "error": str(e)}
 
+
+@app.get("/api/admin/images-sample", tags=["admin"])
+async def images_sample(secret: str = "") -> dict[str, Any]:
+    """Diagnostic : état des images par source (couverture + exemples d'URLs).
+
+    Permet de vérifier en production que les collecteurs stockent des URLs
+    d'images chargeables. Utilisation :
+    GET /api/admin/images-sample?secret=<SECRET_KEY>
+    """
+    if secret != settings.secret_key:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="Clé invalide")
+
+    from sqlalchemy import func, select
+
+    from app.database import async_session_maker
+    from app.models import Event
+
+    async with async_session_maker() as session:
+        rows = (
+            await session.execute(
+                select(
+                    Event.source,
+                    func.count(Event.id),
+                    func.count(Event.image_url),
+                ).group_by(Event.source)
+            )
+        ).all()
+
+        samples: dict[str, list[str | None]] = {}
+        for source, _, _ in rows:
+            urls = (
+                (
+                    await session.execute(
+                        select(Event.image_url)
+                        .where(Event.source == source, Event.image_url.is_not(None))
+                        .limit(3)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            samples[source] = list(urls)
+
+    return {
+        "by_source": [
+            {"source": source, "events": total, "with_image": with_image}
+            for source, total, with_image in rows
+        ],
+        "sample_urls": samples,
+    }
+
