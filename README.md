@@ -19,7 +19,7 @@ combinant plusieurs sources de données ouvertes et du scraping assisté par IA.
 - **Scheduler** : APScheduler (collectes quotidiennes à 6h, alertes à 8h, nettoyage à 2h)
 - **Scraping** : httpx + BeautifulSoup4 + Playwright (pages JS) + Claude API (`claude-sonnet-4-6`)
 - **Frontend** : React 18, Vite, TailwindCSS, Leaflet (carte)
-- **Tests** : pytest (backend, 68 tests) + Vitest (frontend, 13 tests) — CI GitHub Actions
+- **Tests** : pytest (backend, 73 tests) + Vitest (frontend, 13 tests) — CI GitHub Actions
 
 ## Démarrage rapide
 
@@ -111,8 +111,19 @@ L'app n'affiche que ce que les collecteurs ont chargé. Selon la configuration :
 |---|---|---|
 | Référentiel `data.culture.gouv.fr` | **tous les musées IDF + coordonnées GPS** (carte) | aucun |
 | Que Faire à Paris ? | événements **parisiens** | aucun |
-| OpenAgenda | événements toute IDF | `OPENAGENDA_API_KEY` |
-| Scraping (Louvre, Orsay…) | agendas des grands musées | `ANTHROPIC_API_KEY` (+ Playwright) |
+| OpenAgenda | événements toute IDF | `OPENAGENDA_API_KEY` (gratuit) |
+| Scraping (données structurées) | agendas exposant du JSON-LD / `__NEXT_DATA__` (Versailles, Quai Branly…) | aucun |
+| Scraping (extraction IA) | pages sans données structurées (recours) | `ANTHROPIC_API_KEY` (payant) |
+
+### Mode 100 % gratuit
+
+L'application fonctionne **entièrement sans clé Anthropic**. La clé Claude ne
+sert que de recours pour les pages de musées sans données structurées ; le
+scraper extrait d'abord — gratuitement — les événements exposés en **JSON-LD**
+(schema.org) et dans le **JSON `__NEXT_DATA__`** des sites Next.js. Pour ne
+jamais engager de coût IA : laissez `ANTHROPIC_API_KEY` vide, ou posez
+`SCRAPER_USE_AI=false`. Les sources OpenAgenda, Que Faire à Paris et le
+référentiel des musées restent gratuites.
 
 Le référentiel est **amorcé automatiquement au démarrage** si la base est vide —
 que le scheduler tourne dans le worker (docker-compose) ou soit intégré à l'API

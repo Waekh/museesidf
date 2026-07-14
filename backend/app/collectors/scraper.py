@@ -98,18 +98,29 @@ class MuseumScraperCollector(BaseCollector):
         html = await self.fetch_html(self.target.url)
         if not html:
             return []
-        # 1. Données structurées JSON-LD si le site en publie (ex. Versailles) :
-        #    extraction déterministe, aucun appel IA facturé.
+        # 1. Extractions déterministes GRATUITES (aucun appel IA facturé) :
+        #    - JSON-LD schema.org (ex. Château de Versailles)
+        #    - JSON __NEXT_DATA__ des sites Next.js (ex. Quai Branly)
         raw_events = extract_events_from_jsonld(html)
+        source_method = "JSON-LD"
+        if not raw_events:
+            raw_events = extract_events_from_next_data(html)
+            source_method = "__NEXT_DATA__"
         if raw_events:
             logger.info(
-                "[%s] %d événements extraits via JSON-LD (sans appel IA)",
+                "[%s] %d événements extraits via %s (gratuit, sans IA)",
                 self.source,
                 len(raw_events),
+                source_method,
             )
-        else:
-            # 2. Sinon, extraction par Claude sur le HTML nettoyé.
+        elif self.settings.scraper_use_ai and self.settings.anthropic_api_key:
+            # 2. Recours payant : extraction par Claude sur le HTML nettoyé.
             raw_events = await self.extract_events_with_claude(clean_html(html))
+        else:
+            logger.info(
+                "[%s] aucune donnée structurée et IA désactivée — page ignorée (mode gratuit)",
+                self.source,
+            )
         return [
             event
             for raw in raw_events
@@ -359,6 +370,110 @@ def _jsonld_to_raw(node: dict[str, Any]) -> dict[str, Any]:
         "image_url": image,
         "prix": prix,
     }
+
+
+# Clés candidates dans les objets JSON des sites Next.js
+_NEXT_TITLE_KEYS = ("title", "name", "titre", "nom", "label")
+_NEXT_DATE_KEYS = ("startDate", "start_date", "dateStart", "date_debut", "beginDate", "date")
+_NEXT_END_KEYS = ("endDate", "end_date", "dateEnd", "date_fin", "finishDate")
+_NEXT_DESC_KEYS = ("description", "chapo", "resume", "excerpt", "abstract")
+_NEXT_URL_KEYS = ("url", "link", "permalink", "slug", "path")
+_NEXT_IMAGE_KEYS = ("image", "imageUrl", "image_url", "cover", "thumbnail", "visuel")
+
+
+def extract_events_from_next_data(html: str) -> list[dict[str, Any]]:
+    """Extrait les événements du blob JSON `__NEXT_DATA__` (sites Next.js).
+
+    Parcours récursif : on retient tout objet ayant à la fois un titre et une
+    date de début parseable. `normalize()` filtre ensuite les faux positifs.
+    Aucune IA, aucun coût.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    script = soup.find("script", id="__NEXT_DATA__")
+    if script is None or not script.string:
+        return []
+    try:
+        data = json.loads(script.string)
+    except json.JSONDecodeError:
+        return []
+
+    events: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for node in _walk_event_like(data):
+        title = _pick(node, _NEXT_TITLE_KEYS)
+        start = _pick(node, _NEXT_DATE_KEYS)
+        date_debut = normalizer.parse_date(start)
+        if not title or not isinstance(title, str) or date_debut is None:
+            continue
+        key = (title, date_debut.isoformat())
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append(
+            {
+                "titre": title,
+                "description": _as_text(_pick(node, _NEXT_DESC_KEYS)),
+                "date_debut": date_debut.isoformat(),
+                "date_fin": (
+                    d.isoformat()
+                    if (d := normalizer.parse_date(_pick(node, _NEXT_END_KEYS)))
+                    else None
+                ),
+                "heure_debut": start if isinstance(start, str) and "T" in start else None,
+                "heure_fin": None,
+                "lieu": None,
+                "type": None,  # déduit du titre par normalize()
+                "url": _as_text(_pick(node, _NEXT_URL_KEYS)),
+                "image_url": _pick_image(node),
+                "prix": None,
+            }
+        )
+    return events
+
+
+def _walk_event_like(node: Any):
+    """Yield les dicts qui ressemblent à un événement (titre + date)."""
+    if isinstance(node, dict):
+        has_title = any(node.get(k) for k in _NEXT_TITLE_KEYS)
+        has_date = any(node.get(k) for k in _NEXT_DATE_KEYS)
+        if has_title and has_date:
+            yield node
+        for value in node.values():
+            yield from _walk_event_like(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _walk_event_like(item)
+
+
+def _pick(node: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        value = node.get(key)
+        if value not in (None, "", [], {}):
+            return value
+    return None
+
+
+def _as_text(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("fr", "value", "text", "rendered"):
+            if isinstance(value.get(key), str):
+                return value[key]
+    return None
+
+
+def _pick_image(node: dict[str, Any]) -> str | None:
+    value = _pick(node, _NEXT_IMAGE_KEYS)
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("url", "src", "href", "original", "large"):
+            if isinstance(value.get(key), str):
+                return value[key]
+    if isinstance(value, list) and value:
+        return _pick_image({"image": value[0]})
+    return None
 
 
 def clean_html(html: str) -> str:

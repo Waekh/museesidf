@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     scraper_delay_seconds: float = 2.0
     scraper_cache_dir: str = "/tmp/musees_idf_cache"
     scraper_cache_ttl_hours: int = 24
+    # Mode gratuit : extraction déterministe uniquement (JSON-LD, __NEXT_DATA__).
+    # Mettre à False (ou laisser ANTHROPIC_API_KEY vide) pour n'engager aucun
+    # coût d'API IA. À True + clé présente, Claude sert de recours sur les
+    # pages sans données structurées.
+    scraper_use_ai: bool = True
 
     # Rétention RGPD : abonnements inactifs supprimés après 1 an
     alert_retention_days: int = 365
