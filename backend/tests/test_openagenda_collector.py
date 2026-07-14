@@ -54,6 +54,26 @@ def test_normalize_rejects_incomplete_events():
     assert OpenAgendaCollector.normalize({"title": {"fr": "Sans date"}}) is None
 
 
+def test_normalize_survives_string_fields_where_objects_expected():
+    """L'API renvoie parfois une chaîne là où on attend un objet : ne doit
+    plus lever `'str' object has no attribute 'get'`."""
+    raw = {
+        "uid": 42,
+        "title": {"fr": "Expo robuste"},
+        "firstTiming": {"begin": "2026-09-01T10:00:00+02:00"},
+        "location": "Musée fantôme",      # chaîne au lieu d'un objet
+        "image": "https://x/y.jpg",       # chaîne au lieu d'un objet
+        "originAgenda": "paris-musees",   # chaîne au lieu d'un objet
+        "keywords": {"fr": ["exposition"]},
+    }
+    event = OpenAgendaCollector.normalize(raw)  # ne lève pas
+    assert event is not None
+    assert event["title"] == "Expo robuste"
+    # location non exploitable -> pas de musée rattaché, mais pas de crash
+    assert event["museum"] is None
+    assert event["image_url"] is None
+
+
 async def test_save_creates_event_and_museum(session):
     collector = OpenAgendaCollector()
     normalized = OpenAgendaCollector.normalize(SAMPLE_RAW)

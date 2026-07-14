@@ -99,7 +99,16 @@ class OpenAgendaCollector(BaseCollector):
             resp.raise_for_status()
             payload = resp.json()
             batch = payload.get("events", [])
-            events.extend(self.normalize(raw, uid) for raw in batch)
+            for raw in batch:
+                if not isinstance(raw, dict):
+                    continue
+                try:
+                    normalized = self.normalize(raw, uid)
+                except Exception as exc:  # noqa: BLE001 — un événement mal formé ne doit pas tout arrêter
+                    logger.warning("OpenAgenda : événement ignoré (%s)", exc)
+                    continue
+                if normalized:
+                    events.append(normalized)
             after = payload.get("after")
             if not after or len(batch) < PAGE_SIZE:
                 break
@@ -110,21 +119,20 @@ class OpenAgendaCollector(BaseCollector):
     def normalize(raw: dict[str, Any], agenda_uid: str | None = None) -> dict[str, Any] | None:
         """Mappe un événement OpenAgenda vers le format interne."""
         title = _lang(raw.get("title"))
-        first = raw.get("firstTiming") or {}
-        last = raw.get("lastTiming") or {}
+        first = _obj(raw.get("firstTiming"))
+        last = _obj(raw.get("lastTiming"))
         date_start = normalizer.parse_date(first.get("begin"))
         if not title or not date_start:
             return None
 
-        location = raw.get("location") or {}
-        image = raw.get("image") or {}
-        image_url = None
-        if isinstance(image, dict):
-            base = image.get("base") or {}
-            variants = image.get("variants") or []
-            image_url = base.get("url") or (variants[0].get("filename") if variants else None)
+        location = _obj(raw.get("location"))
+        image = _obj(raw.get("image"))
+        base = _obj(image.get("base"))
+        variants = image.get("variants") if isinstance(image.get("variants"), list) else []
+        first_variant = variants[0] if variants and isinstance(variants[0], dict) else {}
+        image_url = base.get("url") or first_variant.get("filename")
 
-        origin = raw.get("originAgenda") or {}
+        origin = _obj(raw.get("originAgenda"))
         slug = raw.get("slug")
         event_url = f"https://openagenda.com/{origin.get('slug', agenda_uid)}/events/{slug}" if slug else None
 
@@ -166,3 +174,9 @@ def _lang(value: Any, lang: str = "fr") -> Any:
     if isinstance(value, dict):
         return value.get(lang) or next(iter(value.values()), None)
     return value
+
+
+def _obj(value: Any) -> dict[str, Any]:
+    """Garantit un dict : l'API renvoie parfois une chaîne/null là où on
+    attend un objet, ce qui ferait planter un appel .get()."""
+    return value if isinstance(value, dict) else {}
