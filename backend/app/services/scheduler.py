@@ -54,6 +54,14 @@ async def collect_scrapers() -> None:
     await run_all_scrapers()
 
 
+async def purge_non_idf_data() -> None:
+    from app.services.idf_cleanup import purge_non_idf
+
+    async with async_session_maker() as session:
+        await purge_non_idf(session)
+        await session.commit()
+
+
 async def sync_museum_registry() -> None:
     await sync_museums()
 
@@ -182,6 +190,8 @@ def create_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(collect_openagenda, "cron", hour=6, minute=0)
     scheduler.add_job(collect_paris_opendata, "cron", hour=6, minute=15)
     scheduler.add_job(collect_scrapers, "cron", hour=6, minute=30)
+    # Purge des éventuelles données hors IDF après les collectes
+    scheduler.add_job(purge_non_idf_data, "cron", hour=6, minute=45)
 
     # Référentiel musées : hebdomadaire (il bouge peu)
     scheduler.add_job(sync_museum_registry, "cron", day_of_week="sun", hour=5, minute=0)

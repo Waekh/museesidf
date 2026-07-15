@@ -102,12 +102,21 @@ async def trigger_collect(secret: str = "") -> dict[str, Any]:
             ParisOpenDataCollector().run(),
             return_exceptions=True
         )
-        
+
+        # Île-de-France uniquement : purge des données hors IDF déjà en base
+        from app.database import async_session_maker
+        from app.services.idf_cleanup import purge_non_idf
+
+        async with async_session_maker() as session:
+            purge = await purge_non_idf(session)
+            await session.commit()
+
         return {
             "status": "collection finished",
             "museums_synced": museum_count,
             "openagenda_result": results[0] if not isinstance(results[0], Exception) else str(results[0]),
             "paris_opendata_result": results[1] if not isinstance(results[1], Exception) else str(results[1]),
+            "non_idf_purge": purge,
         }
     except Exception as e:
         logger.error(f"Error during collection: {e}")

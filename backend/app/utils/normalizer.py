@@ -26,6 +26,10 @@ IDF_DEPARTMENTS = {
     "95": "Val-d'Oise",
 }
 
+# Boîte englobante approximative de l'Île-de-France (repli quand le code
+# postal est absent) : lat_min, lat_max, lon_min, lon_max
+IDF_BBOX = (48.10, 49.25, 1.40, 3.60)
+
 EVENT_TYPES = [
     "exposition",
     "conférence",
@@ -164,6 +168,34 @@ def department_from_postal_code(postal_code: str | None) -> str | None:
         return None
     prefix = postal_code.strip()[:2]
     return IDF_DEPARTMENTS.get(prefix)
+
+
+def _in_idf_bbox(lat: float | None, lon: float | None) -> bool:
+    if lat is None or lon is None:
+        return False
+    lat_min, lat_max, lon_min, lon_max = IDF_BBOX
+    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
+
+
+def is_idf_location(
+    postal_code: str | None,
+    latitude: float | None = None,
+    longitude: float | None = None,
+) -> bool | None:
+    """Un lieu est-il en Île-de-France ?
+
+    Retourne True (certainement IDF), False (certainement hors IDF) ou None
+    (indéterminé — on ne dispose d'aucun signal exploitable). On distingue
+    False de None pour ne rejeter que ce qui est *prouvé* hors IDF sans jeter
+    les événements dont la localisation est inconnue.
+    """
+    if postal_code:
+        code = str(postal_code).strip()[:2]
+        if code.isdigit():
+            return code in IDF_DEPARTMENTS
+    if latitude is not None and longitude is not None:
+        return _in_idf_bbox(latitude, longitude)
+    return None
 
 
 def stable_external_id(title: str, date_start: date | str | None, museum: str | None = None) -> str:

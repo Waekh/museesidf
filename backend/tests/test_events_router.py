@@ -193,3 +193,85 @@ async def test_museums_filtered_by_audience_for_map(client, seed):
 async def test_museums_multi_department_csv(client, seed):
     resp = await client.get("/api/museums", params={"department": "Paris,Val-de-Marne"})
     assert {m["name"] for m in resp.json()} == {"Musée d'Orsay", "MAC VAL"}
+
+
+# ---------------------------------------------------------------- thumbnail
+
+
+async def test_thumbnail_redirects_to_event_image(client, session):
+    e = Event(
+        source="s",
+        external_id="img",
+        title="Avec image",
+        date_start=TODAY,
+        image_url="https://cdn.x.fr/direct.jpg",
+    )
+    session.add(e)
+    await session.commit()
+
+    resp = await client.get(f"/api/events/{e.id}/thumbnail")
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "https://cdn.x.fr/direct.jpg"
+
+
+async def test_thumbnail_fetches_og_image_when_missing(client, session, monkeypatch):
+    from app.routers import events as events_router
+
+    async def fake_fetch(url, ua):
+        return "https://source.fr/og-preview.jpg"
+
+    monkeypatch.setattr(events_router, "fetch_og_image", fake_fetch)
+
+    e = Event(
+        source="s",
+        external_id="noimg",
+        title="Sans image",
+        date_start=TODAY,
+        event_url="https://source.fr/evenement",
+    )
+    session.add(e)
+    await session.commit()
+
+    resp = await client.get(f"/api/events/{e.id}/thumbnail")
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "https://source.fr/og-preview.jpg"
+
+    # Mise en cache : og_image_checked + og_image_url stockés
+    refreshed = await session.get(Event, e.id)
+    await session.refresh(refreshed)
+    assert refreshed.og_image_checked is True
+    assert refreshed.og_image_url == "https://source.fr/og-preview.jpg"
+
+
+async def test_thumbnail_prefer_og_ignores_direct_image(client, session, monkeypatch):
+    from app.routers import events as events_router
+
+    async def fake_fetch(url, ua):
+        return "https://source.fr/og.jpg"
+
+    monkeypatch.setattr(events_router, "fetch_og_image", fake_fetch)
+
+    e = Event(
+        source="s",
+        external_id="broken",
+        title="Image cassée",
+        date_start=TODAY,
+        image_url="https://cdn.x.fr/morte.jpg",  # cassée côté client
+        event_url="https://source.fr/evenement",
+    )
+    session.add(e)
+    await session.commit()
+
+    # prefer_og=1 : on force l'og:image malgré la présence d'image_url
+    resp = await client.get(f"/api/events/{e.id}/thumbnail", params={"prefer_og": "1"})
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "https://source.fr/og.jpg"
+
+
+async def test_thumbnail_404_when_no_image(client, session):
+    e = Event(source="s", external_id="none", title="Rien", date_start=TODAY)
+    session.add(e)
+    await session.commit()
+
+    resp = await client.get(f"/api/events/{e.id}/thumbnail")
+    assert resp.status_code == 404

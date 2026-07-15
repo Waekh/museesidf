@@ -39,6 +39,19 @@ from app.utils import normalizer
 
 logger = logging.getLogger(__name__)
 
+
+def is_non_idf(museum_data: dict[str, Any]) -> bool:
+    """True si la localisation du musée est prouvée hors Île-de-France."""
+    return (
+        normalizer.is_idf_location(
+            museum_data.get("postal_code"),
+            museum_data.get("latitude"),
+            museum_data.get("longitude"),
+        )
+        is False
+    )
+
+
 # Champs recopiés tels quels lors de l'upsert
 _EVENT_FIELDS = (
     "title",
@@ -85,9 +98,17 @@ class BaseCollector(ABC):
                 skipped += 1
                 continue
 
+            # Île-de-France uniquement : rejeter les événements dont la
+            # localisation est *prouvée* hors IDF (ex. agendas OpenAgenda
+            # nationaux). Les localisations indéterminées sont conservées.
+            museum_data = data.get("museum")
+            if museum_data and is_non_idf(museum_data):
+                skipped += 1
+                continue
+
             museum = None
-            if data.get("museum"):
-                museum = await self._get_or_create_museum(session, data["museum"], museum_cache)
+            if museum_data:
+                museum = await self._get_or_create_museum(session, museum_data, museum_cache)
             elif data.get("museum_id"):
                 museum = await session.get(Museum, data["museum_id"])
 

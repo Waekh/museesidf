@@ -70,6 +70,10 @@ class Event(Base):
     event_url: Mapped[str | None] = mapped_column(String(500))
     audience: Mapped[str | None] = mapped_column(String(100))
     raw_data: Mapped[dict | None] = mapped_column(JsonVariant)
+    # Repli d'image : miniature (og:image) de la page source, récupérée à la
+    # demande. og_image_checked évite de re-tenter un fetch qui a déjà échoué.
+    og_image_url: Mapped[str | None] = mapped_column(String(500))
+    og_image_checked: Mapped[bool] = mapped_column(Boolean, default=False)
     # Déduplication cross-sources
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     duplicate_of_id: Mapped[int | None] = mapped_column(ForeignKey("events.id"))

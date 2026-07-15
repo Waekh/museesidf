@@ -19,7 +19,7 @@ combinant plusieurs sources de données ouvertes et du scraping assisté par IA.
 - **Scheduler** : APScheduler (collectes quotidiennes à 6h, alertes à 8h, nettoyage à 2h)
 - **Scraping** : httpx + BeautifulSoup4 + Playwright (pages JS) + Claude API (`claude-sonnet-4-6`)
 - **Frontend** : React 18, Vite, TailwindCSS, Leaflet (carte)
-- **Tests** : pytest (backend, 95 tests) + Vitest (frontend, 16 tests) — CI GitHub Actions
+- **Tests** : pytest (backend, 107 tests) + Vitest (frontend, 16 tests) — CI GitHub Actions
 
 ## Démarrage rapide
 

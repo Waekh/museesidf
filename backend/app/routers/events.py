@@ -1,13 +1,16 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import get_settings
 from app.database import get_db
 from app.models import Event
 from app.schemas import EventListOut, EventOut
+from app.utils.og_image import fetch_og_image
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -100,3 +103,37 @@ async def get_event(event_id: int, db: AsyncSession = Depends(get_db)) -> EventO
     if event is None:
         raise HTTPException(status_code=404, detail="Événement introuvable")
     return EventOut.model_validate(event)
+
+
+@router.get("/{event_id}/thumbnail")
+async def event_thumbnail(
+    event_id: int,
+    prefer_og: bool = Query(False, description="Ignorer image_url et forcer l'og:image"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Renvoie (via redirection) l'image de l'événement, avec repli sur la
+    miniature de prévisualisation (og:image) de la page source.
+
+    Le frontend pointe le `src` de la carte vers cet endpoint quand
+    l'événement n'a pas d'image propre : la miniature du site source est
+    récupérée à la première demande puis mise en cache (og_image_checked),
+    ce qui évite tout re-fetch et tout appel réseau à la collecte.
+    `prefer_og=1` force l'og:image (utilisé quand l'image directe s'est
+    révélée cassée à l'affichage).
+    """
+    event = await db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Événement introuvable")
+
+    target = event.og_image_url if prefer_og else (event.image_url or event.og_image_url)
+
+    if target is None and not event.og_image_checked and event.event_url:
+        target = await fetch_og_image(event.event_url, get_settings().scraper_user_agent)
+        event.og_image_url = target
+        event.og_image_checked = True
+        await db.commit()
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Aucune image disponible")
+    # 302 : l'image peut changer si la source met à jour son og:image
+    return RedirectResponse(target, status_code=302)

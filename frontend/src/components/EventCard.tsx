@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { API_URL } from "../api/client";
 import type { Event } from "../types";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -27,8 +28,21 @@ interface EventCardProps {
 
 export default function EventCard({ event }: EventCardProps) {
   const badgeClass = TYPE_COLORS[event.event_type ?? "autre"] ?? TYPE_COLORS.autre;
-  const [imageFailed, setImageFailed] = useState(false);
-  const imageUrl = !imageFailed ? event.image_url ?? event.museum?.logo_url ?? null : null;
+
+  // Cascade d'affichage de l'image :
+  //  1. image propre de l'événement (ou logo du musée)
+  //  2. miniature de prévisualisation (og:image) de la page source, via l'API
+  //  3. icône de repli
+  const primaryImage = event.image_url ?? event.museum?.logo_url ?? null;
+  const ogThumb = `${API_URL}/api/events/${event.id}/thumbnail?prefer_og=1`;
+  const [stage, setStage] = useState<"primary" | "og" | "none">(
+    primaryImage ? "primary" : "og",
+  );
+  const imageSrc = stage === "primary" ? primaryImage : stage === "og" ? ogThumb : null;
+
+  function handleImageError() {
+    setStage((current) => (current === "primary" ? "og" : "none"));
+  }
 
   return (
     <article
@@ -40,13 +54,13 @@ export default function EventCard({ event }: EventCardProps) {
         aria-label={`Voir l'événement ${event.title}`}
         className="block h-40 bg-ink/5 dark:bg-cream/5 overflow-hidden"
       >
-        {imageUrl ? (
+        {imageSrc ? (
           <img
-            src={imageUrl}
+            src={imageSrc}
             alt={event.title}
             loading="lazy"
             className="h-full w-full object-cover group-hover:scale-[1.02] transition-transform"
-            onError={() => setImageFailed(true)}
+            onError={handleImageError}
           />
         ) : (
           <div

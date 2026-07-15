@@ -79,13 +79,17 @@ describe("EventCard", () => {
     expect(screen.getByText(/Du 1/)).toBeInTheDocument();
   });
 
-  it("gère les données minimales avec des valeurs de repli", () => {
+  it("gère les données minimales en tentant la miniature de la page source", () => {
     renderCard(MINIMAL_EVENT);
 
     expect(screen.getByText("Atelier mystère")).toBeInTheDocument();
     expect(screen.getByText("autre")).toBeInTheDocument();
     expect(screen.getByText("Tarif non communiqué")).toBeInTheDocument();
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    // Sans image propre, on pointe vers l'endpoint miniature (og:image)
+    expect(screen.getByRole("img", { name: "Atelier mystère" })).toHaveAttribute(
+      "src",
+      "http://localhost:8000/api/events/2/thumbnail?prefer_og=1",
+    );
     expect(screen.queryByRole("link", { name: /En savoir plus/ })).not.toBeInTheDocument();
   });
 
@@ -97,12 +101,23 @@ describe("EventCard", () => {
     expect(imageLink.querySelector("img")).toHaveAttribute("src", "https://example.com/img.jpg");
   });
 
-  it("affiche l'icône de repli si l'image échoue au chargement", () => {
+  it("bascule image propre → miniature og:image → icône de repli", () => {
     renderCard(FULL_EVENT);
 
-    const img = screen.getByRole("img", { name: "Monet en lumière" });
-    fireEvent.error(img);
+    // 1. image propre
+    let img = screen.getByRole("img", { name: "Monet en lumière" });
+    expect(img).toHaveAttribute("src", "https://example.com/img.jpg");
 
+    // 2. échec → miniature de la page source
+    fireEvent.error(img);
+    img = screen.getByRole("img", { name: "Monet en lumière" });
+    expect(img).toHaveAttribute(
+      "src",
+      "http://localhost:8000/api/events/1/thumbnail?prefer_og=1",
+    );
+
+    // 3. échec → icône de repli
+    fireEvent.error(img);
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.getByText("❦")).toBeInTheDocument();
   });
